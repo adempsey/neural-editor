@@ -260,16 +260,11 @@ class EditExample(namedtuple('EditExample', ['source_words', 'insert_words', 'in
             EditExample
         """
         trg_words = src_words
-        chopLen = 5
-        chop = src_words[-chopLen:]
-        if len(src_words) < 5:
-            chopLen = 1
-            chop = src_words[-1:]
-
-        truncated = src_words[:-chopLen]
-        src_words = truncated
-        insert_words = [u" "]
-        delete_words = chop
+        if len(src_words) > 5:
+            src_words = src_words[:-5]
+        src_set, trg_set = set(src_words), set(trg_words)
+        insert_words = sorted(trg_set - src_set - free_set)
+        delete_words = sorted(src_set - trg_set - free_set)
 
         return EditExample(source_words=src_words, insert_words=[], insert_exact_words=insert_words,
                            delete_words=[], delete_exact_words=delete_words, target_words=trg_words)

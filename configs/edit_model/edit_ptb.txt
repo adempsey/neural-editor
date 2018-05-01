@@ -23,7 +23,7 @@ editor {
     norm_max = 7.5
     kill_edit = True
     embed_sentence = False
-    wvec_path = glove.6B.300d_yelp.txt
+    wvec_path = glove.6B.300d_onebil.txt
 }
 
 dataset {

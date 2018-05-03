@@ -1004,6 +1004,85 @@ def bleu(reference, predict):
     weights = tuple([1. / n] * n)  # uniform weight on n-gram precisions
     return bleu_score.sentence_bleu([reference], predict, weights, emulate_multibleu=True)
 
+def gleu(reference, predict):
+    """Compute sentence-level gleu score.
+
+    Args:
+        reference (list[str])
+        predict (list[str])
+    """
+    from nltk.translate import gleu_score
+
+    if len(predict) == 0:
+        if len(reference) == 0:
+            return 1.0
+        else:
+            return 0.0
+
+    return gleu_score.sentence_gleu([reference], predict)
+
+def ribes(reference, hypothesis):
+    """Compute sentence-level ribes score with kendall_tau correlation.
+    Args:
+        reference (list[str])
+        hypothesis (list[str])
+    """
+    from nltk.translate import ribes_score
+    import math
+
+    # if both are empty return full score, else return zero
+    if len(hypothesis) == 0:
+        if len(reference) == 0:
+            return 1.0
+        else:
+            return 0.0
+
+    # ribes_score.sentence_ribes modified for single reference and hypothesis
+    # found at: http://www.nltk.org/_modules/nltk/translate/ribes_score.html#sentence_ribes
+    best_ribes = -1.0
+    alpha = 0.25
+    beta = 0.10
+    
+    # Collects the *worder* from the ranked correlation alignments.
+    worder = ribes_score.word_rank_alignment(reference, hypothesis)
+
+    # if worder matches are sparse, then spearman_rho correlation will be NaN
+    # rho = 1 - sum_d_square / choose(worder_len+1, 3)
+    if len(worder) < 2:
+        return 0.0
+    else:
+        nkt = ribes_score.spearman_rho(worder)
+        
+    # Calculates the brevity penalty
+    bp = min(1.0, math.exp(1.0 - len(reference)/len(hypothesis)))
+    
+    # Calculates the unigram precision, *p1*
+    p1 = len(worder) / len(hypothesis)
+    
+    _ribes = nkt * (p1 ** alpha) *  (bp ** beta)
+    
+    if _ribes > best_ribes: # Keeps the best score.
+        best_ribes = _ribes
+        
+    return best_ribes
+
+def chrf(reference, predict):
+    """Compute sentence-level chrf score.
+
+    Args:
+        reference (list[str])
+        predict (list[str])
+    """
+    from nltk.translate import chrf_score
+
+    if len(predict) == 0:
+        if len(reference) == 0:
+            return 1.0
+        else:
+            return 0.0
+
+    return chrf_score.sentence_chrf(reference, predict)
+
 
 class ComparableMixin(object):
     __metaclass__ = ABCMeta

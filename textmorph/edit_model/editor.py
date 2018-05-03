@@ -79,7 +79,7 @@ class Editor(Module):
 
         Args:
             editor_input (EditorInput)
-            draw_samples (bool) : flag for whether to add noise for variational approx. 
+            draw_samples (bool) : flag for whether to add noise for variational approx.
 
         Returns:
             loss (Variable): scalar
@@ -259,6 +259,9 @@ class EditExample(namedtuple('EditExample', ['source_words', 'insert_words', 'in
         Returns:
             EditExample
         """
+        trg_words = src_words
+        if len(src_words) > 5:
+            src_words = src_words[:-5]
         src_set, trg_set = set(src_words), set(trg_words)
         insert_words = sorted(trg_set - src_set - free_set)
         delete_words = sorted(src_set - trg_set - free_set)

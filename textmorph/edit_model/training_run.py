@@ -18,7 +18,7 @@ from fabric.api import local
 import gtd.io
 from gtd.chrono import verboserate
 from gtd.log import Metadata
-from gtd.utils import random_seed, sample_if_large, bleu, Failure, Config, chunks
+from gtd.utils import random_seed, sample_if_large, bleu, gleu, ribes, chrf, Failure, Config, chunks
 from gtd.ml.training_run import TrainingRunWorkspace, TrainingRuns
 from gtd.ml.torch.training_run import TorchTrainingRun
 from textmorph import data
@@ -49,6 +49,9 @@ class EditTrainingRuns(TrainingRuns):
         # metadata
         meta = Metadata.from_file(workspace.metadata)
         bleu = meta.get('bleu_valid', None)
+        gleu = meta.get('gleu_valid', None)
+        ribes = meta.get('ribes_valid', None)
+        chrf = meta.get('chrf_valid', None)
         loss = meta.get('loss_valid', None)
         dirty_repo = meta.get('dirty_repo', '?')
 
@@ -56,9 +59,9 @@ class EditTrainingRuns(TrainingRuns):
         config = Config.from_file(workspace.config)
         dataset = config.dataset.path
 
-        return '{name:10} -- steps: {steps:<10}, loss: {loss:.2f}, dset: {dset:15}, bleu: {bleu:.2f} ' \
+        return '{name:10} -- steps: {steps:<10}, loss: {loss:.2f}, dset: {dset:15}, bleu: {bleu:.2f}, gleu: {gleu:.2f}, ribes: {ribes:.2f}, chrf: {chrf:.2f} ' \
                'dirty_repo: {dirty_repo}'.format(
-                name=name, dset=dataset, steps=steps, loss=loss, bleu=bleu, dirty_repo=dirty_repo)
+                name=name, dset=dataset, steps=steps, loss=loss, bleu=bleu, gleu=gleu, ribes=ribes, chrf=chrf, dirty_repo=dirty_repo)
 
     def summarize(self, fmt=None, verbose=False):
         if fmt is None:
@@ -112,6 +115,12 @@ class EditDataSplits(object):
             with codecs.open(path, 'r', encoding='utf-8') as f:
                 for line in verboserate(f, desc='Reading data file.', total=total_lines):
                     src, trg = line.strip().lower().split('\t')
+                    # src = line.strip().lower()
+                    trg = src
+                    # print src
+                    # assert(False)
+                    # print src, trg
+                    # assert(False)
                     src_words = src.split(' ')
                     trg_words = trg.split(' ')
                     assert len(src_words) > 0
@@ -127,6 +136,9 @@ class EditDataSplits(object):
         self.train = examples_from_file(join(data_dir, 'train.tsv'))
         self.valid = examples_from_file(join(data_dir, 'valid.tsv'))
         self.test = examples_from_file(join(data_dir, 'test.tsv'))
+        # self.train = examples_from_file(join(data_dir, 'train.txt'))
+        # self.valid = examples_from_file(join(data_dir, 'valid.txt'))
+        # self.test = examples_from_file(join(data_dir, 'test.txt'))
         self.free = free
 
 
@@ -217,6 +229,7 @@ class TrainState(object):
 
     def save(self, checkpoints_dir):
         path = join(checkpoints_dir, '{}.checkpoint'.format(self.train_steps))
+        print 'save path ', path
         gtd.io.makedirs(path)
 
         # save model
@@ -482,16 +495,19 @@ class EditTrainingRun(TorchTrainingRun):
             big_str = 'big_' if big_eval else ''
 
             # compute metrics
-            loss, avg_bleu, edit_traces = cls._compute_metrics(editor, examples, num_eval, noiser,
+            loss, avg_bleu, avg_gleu, avg_ribes, avg_chrf, edit_traces = cls._compute_metrics(editor, examples, num_eval, noiser,
                                                                edit_dropout=config.editor.edit_dropout,
                                                                draw_samples=config.editor.enable_vae)
 
             # log
             log_value('loss_{}{}'.format(big_str, name), loss, train_steps)
             log_value('bleu_{}{}'.format(big_str, name), avg_bleu, train_steps)
+            log_value('gleu_{}{}'.format(big_str, name), avg_gleu, train_steps)
+            log_value('ribes_{}{}'.format(big_str, name), avg_ribes, train_steps)
+            log_value('chrf_{}{}'.format(big_str, name), avg_chrf, train_steps)
 
             print '=== {}{} ==='.format(big_str, name)
-            print 'loss: {}, bleu: {}'.format(loss, avg_bleu)
+            print 'loss: {}, bleu: {}, gleu: {}, ribes: {}, chrf: {}'.format(loss, avg_bleu, avg_gleu, avg_ribes, avg_chrf)
 
             # print traces for the small evaluation
             if not big_eval:
@@ -524,9 +540,16 @@ class EditTrainingRun(TorchTrainingRun):
 
         # compute BLEU score and log to TensorBoard
         outputs, edit_traces = editor.edit(noised_sample)
-        bleus = []
+        bleus, gleus, ribeses, chrfs = [], [], [], []
+
         for ex, output in izip(noised_sample, outputs):
             # outputs is a list(over batches)[ list(over beams) [ list(over tokens) [ unicode ] ] ] object.
             bleus.append(bleu(ex.target_words, output[0]))
+            gleus.append(gleu(ex.target_words, output[0]))
+            ribeses.append(ribes(ex.target_words, output[0]))
+            chrfs.append(chrf(ex.target_words, output[0]))
         avg_bleu = np.mean(bleus)
-        return loss, avg_bleu, edit_traces
+        avg_gleu = np.mean(gleus)
+        avg_ribes = np.mean(ribeses)
+        avg_chrf = np.mean(chrfs)
+        return loss, avg_bleu, avg_gleu, avg_ribes, avg_chrf, edit_traces
